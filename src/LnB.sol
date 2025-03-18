@@ -19,6 +19,7 @@ contract sAAVE is Ownable{
     uint256 public constant LIQUIDATION_THRESHOLD = 75; 
     uint256 public constant COLLATERAL_RATIO = 150;
     uint256 public interestRatePerSecond = 1e12;
+    uint256 public constant LIQUIDATION_BONUS = 10;
 
     constructor(IERC20 _usdc, AggregatorV3Interface _priceFeed) Ownable(msg.sender){
         usdc = _usdc;
@@ -28,6 +29,7 @@ contract sAAVE is Ownable{
     event borrowed(address indexed user, uint256 amount);
     event deposited(address indexed user, uint256 amount);
     event withdrawn(address indexed user, uint256 amount);
+    event Liquidated(address indexed borrower,address indexed liquidator,uint256 repaidAmount,uint256 collateralSeized);
 
     struct User {
         uint256 collateralisedETH;
@@ -55,6 +57,7 @@ contract sAAVE is Ownable{
         }
         user.collateralisedETH += msg.value;
         user.lastTransactionTime = block.timestamp;
+
         emit deposited(msg.sender, msg.value);
     }
 
@@ -102,5 +105,26 @@ contract sAAVE is Ownable{
         usdc.transferFrom(msg.sender, address(this), amount);
         user.lendedUSDC -= amount;
         user.lastTransactionTime = block.timestamp;
+    }
+
+    function liquidate(address borrower) public {
+        User storage user = users[borrower];
+        require(user.lendedUSDC > 0);
+        uint256 collateralRatio = getCollateralRatio(borrower);
+        require(collateralRatio < LIQUIDATION_THRESHOLD);
+
+        uint256 debt = user.lendedUSDC;
+        uint256 collateralValue = (user.collateralisedETH * ETHPrice()) / 1e18;
+        uint256 bonusCollateral = (debt * LIQUIDATION_BONUS) / 100;
+        uint256 totalCollateralSeized = debt + bonusCollateral;
+
+        require(totalCollateralSeized <= collateralValue);
+
+        usdc.transferFrom(msg.sender, address(this), debt);
+        user.lendedUSDC = 0;
+        user.collateralisedETH -= totalCollateralSeized;
+        payable(msg.sender).transfer(totalCollateralSeized);
+
+        emit Liquidated(borrower, msg.sender, debt, totalCollateralSeized);
     }
 }
