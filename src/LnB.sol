@@ -9,21 +9,20 @@ pragma solidity ^0.8.18;
 // interest linear
 
 
-import {Ownable} from "../lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {AggregatorV3Interface} from "../lib/chainlink-brownie-contracts/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {IERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
-contract sAAVE is Ownable{
+contract sAAVE {
     IERC20 public usdc;
-    AggregatorV3Interface public priceFeed;
+    AggregatorV3Interface public priceFeedETH;
     uint256 public constant LIQUIDATION_THRESHOLD = 75; 
     uint256 public constant COLLATERAL_RATIO = 150;
     uint256 public interestRatePerSecond = 1e12;
     uint256 public constant LIQUIDATION_BONUS = 10;
 
-    constructor(IERC20 _usdc, AggregatorV3Interface _priceFeed) Ownable(msg.sender){
-        usdc = _usdc;
-        priceFeed = _priceFeed;
+    constructor(address _usdc, AggregatorV3Interface _priceFeedETH) {
+        usdc = IERC20(_usdc);
+        priceFeedETH = _priceFeedETH;
     }
 
     event borrowed(address indexed user, uint256 amount);
@@ -40,7 +39,7 @@ contract sAAVE is Ownable{
     mapping(address => User) private users;
 
     function ETHPrice() public view returns (uint256) {
-        (, int256 price, , , ) = priceFeed.latestRoundData();
+        (, int256 price, , , ) = priceFeedETH.latestRoundData();
         return uint256(price); 
     }
 
@@ -126,5 +125,13 @@ contract sAAVE is Ownable{
         payable(msg.sender).transfer(totalCollateralSeized);
 
         emit Liquidated(borrower, msg.sender, debt, totalCollateralSeized);
+    }
+
+    function getCollateralBalance(address user) public view returns (uint256) {
+        return users[user].collateralisedETH;
+    }
+
+    function getDebt(address user) public view returns (uint256) {
+        return users[user].lendedUSDC;
     }
 }
